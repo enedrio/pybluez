@@ -69,7 +69,8 @@ elif sys.platform.startswith('linux'):
                         include_dirs = ["./port3",],
                         libraries = ['bluetooth'],
                         #extra_compile_args=['-O0'],
-                        sources = ['bluez/btmodule.c', 'bluez/btsdp.c'])
+                        sources = ['bluez/btmodule.c', 'bluez/btsdp.c',
+                                   'bluez/ble.c'])
     mods = [ mod1 ]
 elif sys.platform == 'darwin':
     mod1 = Extension('bluetooth._osxbt',
