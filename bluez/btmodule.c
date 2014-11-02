@@ -43,6 +43,7 @@ Local naming conventions:
 #include <bluetooth/sdp.h>
 #include <bluetooth/sdp_lib.h>
 #include "btsdp.h"
+#include "ble.h"
 
 /* Socket object documentation */
 PyDoc_STRVAR(sock_doc,
@@ -2795,6 +2796,7 @@ static PyMethodDef bt_methods[] = {
     DECL_BT_METHOD( setdefaulttimeout, METH_O ),
     DECL_BT_METHOD( sdp_advertise_service, METH_VARARGS ),
     DECL_BT_METHOD( sdp_stop_advertising, METH_VARARGS ),
+    DECL_BT_METHOD( lescan, METH_VARARGS ),
 //    DECL_BT_METHOD( advertise_service, METH_VARARGS | METH_KEYWORDS ),
 	{NULL,			NULL}		 /* Sentinel */
 };

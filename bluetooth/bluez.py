@@ -19,6 +19,9 @@ del _constants
 
 # ============== SDP service registration and unregistration ============
 
+def lescan():
+    return _bt.lescan()
+
 def discover_devices (duration=8, flush_cache=True, lookup_names=False, lookup_class=False):
     sock = _gethcisock ()
     try:
@@ -32,9 +35,9 @@ def discover_devices (duration=8, flush_cache=True, lookup_names=False, lookup_c
         pairs = []
         for item in results:
             if lookup_class:
-               addr, dev_class = item
+                addr, dev_class = item
             else:
-               addr = item
+                addr = item
             timeoutms = int (10 * 1000)
             try: 
                 name = _bt.hci_read_remote_name (sock, addr, timeoutms)
