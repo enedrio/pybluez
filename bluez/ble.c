@@ -132,12 +132,18 @@ done:
     return 0;
 }
 
-static void cmd_lescan(int dev_id, int opt)
+static PyObject * ble_exception(const char * message)
+{
+    PyErr_SetString(PyExc_RuntimeError, message);
+    return NULL;
+}
+
+static PyObject * cmd_lescan(int dev_id, int opt)
 {
     int err, dd;
     uint8_t own_type = 0x00;
     uint8_t scan_type = 0x01;
-    uint8_t filter_type = 0;
+    uint8_t filter_type = 'l';
     uint8_t filter_policy = 0x00;
     uint16_t interval = htobs(0x0010);
     uint16_t window = htobs(0x0010);
@@ -154,12 +160,6 @@ static void cmd_lescan(int dev_id, int opt)
         filter_policy = 0x01; /* Whitelist */
         break;
     case 'd':
-        filter_type = optarg[0];
-        if (filter_type != 'g' && filter_type != 'l') {
-            fprintf(stderr, "Unknown discovery procedure\n");
-            exit(1);
-        }
-
         interval = htobs(0x0012);
         window = htobs(0x0012);
         break;
@@ -168,7 +168,7 @@ static void cmd_lescan(int dev_id, int opt)
         break;
     default:
         printf("error");
-        return;
+        return NULL;
     }
 
     if (dev_id < 0)
@@ -176,38 +176,32 @@ static void cmd_lescan(int dev_id, int opt)
 
     dd = hci_open_dev(dev_id);
     if (dd < 0) {
-        perror("Could not open device");
-        exit(1);
+        return ble_exception("Could not open device");
     }
 
     err = hci_le_set_scan_parameters(dd, scan_type, interval, window,
                         own_type, filter_policy, 10000);
     if (err < 0) {
-        perror("Set scan parameters failed");
-        exit(1);
+        return ble_exception("Set scan parameters failed");
     }
 
     err = hci_le_set_scan_enable(dd, 0x01, filter_dup, 10000);
     if (err < 0) {
-        perror("Enable scan failed");
-        exit(1);
+        return ble_exception("Enable scan failed");
     }
-
-    printf("LE Scan ...\n");
 
     err = print_advertising_devices(dd, filter_type);
     if (err < 0) {
-        perror("Could not receive advertising events");
-        exit(1);
+        return ble_exception("Could not receive advertising events");
     }
 
     err = hci_le_set_scan_enable(dd, 0x00, filter_dup, 10000);
     if (err < 0) {
-        perror("Disable scan failed");
-        exit(1);
+        return ble_exception("Disable scan failed");
     }
 
     hci_close_dev(dd);
+    Py_RETURN_NONE;
 }
 
 PyObject *
@@ -228,7 +222,7 @@ bt_lescan(PyObject *self, PyObject *args) {
     err = PyList_Append( rtn_list, item_tuple );
     Py_DECREF( item_tuple );
 
-    //cmd_lescan(-1, 'd');
+    return cmd_lescan(-1, 'd');
 
     return rtn_list;
 }
