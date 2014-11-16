@@ -8,16 +8,14 @@
 
 PyObject *ble_error;
 
-static volatile int signal_received = 0;
-
-static void sigint_handler(int sig)
-{
-    //TODO handle signal the python way;)
-    //signal_received = sig;
-}
-
 #define EIR_NAME_SHORT              0x08  /* shortened local name */
 #define EIR_NAME_COMPLETE           0x09  /* complete local name */
+
+static PyObject * ble_exception(const char * message)
+{
+    PyErr_SetString(PyExc_RuntimeError, message);
+    return NULL;
+}
 
 static void eir_parse_name(uint8_t *eir, size_t eir_len,
                         char *buf, size_t buf_len)
@@ -56,18 +54,17 @@ failed:
 }
 
 
-static int print_advertising_devices(int dd, uint8_t filter_type)
+static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
     struct hci_filter nf, of;
-    struct sigaction sa;
     socklen_t olen;
     int len;
 
     olen = sizeof(of);
     if (getsockopt(dd, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
-        printf("Could not get socket options\n");
-        return -1;
+//        printf("Could not get socket options\n");
+        return ble_exception("Could not get socket options");
     }
 
     hci_filter_clear(&nf);
@@ -75,14 +72,8 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
     hci_filter_set_event(EVT_LE_META_EVENT, &nf);
 
     if (setsockopt(dd, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
-        printf("Could not set socket options\n");
-        return -1;
+        return ble_exception("Could not set socket options");
     }
-
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_flags = SA_NOCLDSTOP;
-    sa.sa_handler = sigint_handler;
-    sigaction(SIGINT, &sa, NULL);
 
     while (1) {
         evt_le_meta_event *meta;
@@ -90,7 +81,7 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
         char addr[18];
 
         while ((len = read(dd, buf, sizeof(buf))) < 0) {
-            if (errno == EINTR && signal_received == SIGINT) {
+            if (errno == EINTR && (PyErr_CheckSignals() < 0)) {
                 len = 0;
                 goto done;
             }
@@ -126,16 +117,9 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
 done:
     setsockopt(dd, SOL_HCI, HCI_FILTER, &of, sizeof(of));
 
-    if (len < 0)
-        return -1;
+    if (len < 0) return ble_exception("Could not set socket options");
 
-    return 0;
-}
-
-static PyObject * ble_exception(const char * message)
-{
-    PyErr_SetString(PyExc_RuntimeError, message);
-    return NULL;
+    Py_RETURN_NONE;
 }
 
 static PyObject * cmd_lescan(int dev_id, int opt)
@@ -148,6 +132,7 @@ static PyObject * cmd_lescan(int dev_id, int opt)
     uint16_t interval = htobs(0x0010);
     uint16_t window = htobs(0x0010);
     uint8_t filter_dup = 1;
+    PyObject * ret = NULL;
 
     switch (opt) {
     case 'p':
@@ -190,8 +175,8 @@ static PyObject * cmd_lescan(int dev_id, int opt)
         return ble_exception("Enable scan failed");
     }
 
-    err = print_advertising_devices(dd, filter_type);
-    if (err < 0) {
+    ret = print_advertising_devices(dd, filter_type);
+    if (ret == NULL) {
         return ble_exception("Could not receive advertising events");
     }
 
