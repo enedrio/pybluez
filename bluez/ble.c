@@ -91,9 +91,13 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
     struct hci_filter nf, of;
     socklen_t olen;
-    int len = 0, timeout;
-    double totime = 9.0, selectto;
+    int len = 0, timeout, err;
+    double totime = 2.0, selectto;
     clock_t start;
+    PyObject *rtn_list = PyList_New(0);
+    //printf("to %d\n", rtn_list);
+    if(rtn_list == NULL) return NULL;
+
 
     olen = sizeof(of);
     if (getsockopt(dd, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
@@ -115,7 +119,6 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
         char addr[18];
 
         selectto = totime - ((clock() - start)/100.0);
-        printf("to %f\n", selectto);
         if(selectto <= 0) {
             goto done;
         }
@@ -143,11 +146,36 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
 
         /* Ignoring multiple reports */
         info = (le_advertising_info *) (meta->data + 1);
-//        if (check_report_filter(filter_type, info)) {
 
-            ba2str(&info->bdaddr, addr);
-            printf("%s\n", addr);
-//        }
+        ba2str(&info->bdaddr, addr);
+
+        PyObject *item_tuple = PyTuple_New(2);
+        PyObject * addr_entry = (PyObject *)NULL;
+        addr_entry = PyString_FromString( addr );
+        err = PyTuple_SetItem( item_tuple, 0, addr_entry );
+        if (err) {
+            Py_XDECREF( item_tuple );
+            Py_XDECREF( rtn_list );
+            len = -1;
+            goto done;
+        }
+        addr_entry = PyString_FromString( addr );
+        err = PyTuple_SetItem( item_tuple, 1, addr_entry );
+        if (err) {
+            Py_XDECREF( item_tuple );
+            Py_XDECREF( rtn_list );
+            len = -1;
+            goto done;
+        }
+        err = PyList_Append( rtn_list, item_tuple );
+        Py_DECREF( item_tuple );
+        if (err) {
+            Py_XDECREF( rtn_list );
+            len = -1;
+            goto done;
+        }
+
+        printf("%s\n", addr);
     }
 
 done:
@@ -155,7 +183,7 @@ done:
 
     if (len < 0) return ble_exception("Could not set socket options");
 
-    Py_RETURN_NONE;
+    return rtn_list;
 }
 
 static PyObject * cmd_lescan(int dev_id, int opt)
@@ -212,6 +240,7 @@ static PyObject * cmd_lescan(int dev_id, int opt)
     }
 
     ret = print_advertising_devices(dd, filter_type);
+
     if (ret == NULL) {
         return ble_exception("Could not receive advertising events");
     }
@@ -222,29 +251,12 @@ static PyObject * cmd_lescan(int dev_id, int opt)
     }
 
     hci_close_dev(dd);
-    Py_RETURN_NONE;
+    return ret;
 }
 
 PyObject *
 bt_lescan(PyObject *self, PyObject *args) {
-    PyObject *rtn_list = PyList_New(0);
-    PyObject *item_tuple = PyTuple_New(2);
-    PyObject * addr_entry = (PyObject *)NULL;
-    PyObject * name_entry = (PyObject *)NULL;
-
-    addr_entry = PyString_FromString( "addr" );
-    int err = PyTuple_SetItem( item_tuple, 0, addr_entry );
-    if (err) Py_XDECREF( item_tuple );
-
-    name_entry = PyString_FromString( "name" );
-    err = PyTuple_SetItem( item_tuple, 1, name_entry );
-    if (err) Py_XDECREF( item_tuple );
-
-    err = PyList_Append( rtn_list, item_tuple );
-    Py_DECREF( item_tuple );
-
     return cmd_lescan(-1, 'd');
 
-    return rtn_list;
 }
 
