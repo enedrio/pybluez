@@ -3311,6 +3311,9 @@ PyInit__bluetooth(void)
 #ifdef EVT_SI_SECURITY
     ADD_INT_CONST(m, EVT_SI_SECURITY);
 #endif
+#ifdef EVT_LE_META_EVENT
+    ADD_INT_CONST(m, EVT_LE_META_EVENT);
+#endif
 
     /* HCI packet types */
 #ifdef HCI_COMMAND_PKT

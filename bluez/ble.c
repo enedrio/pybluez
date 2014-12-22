@@ -5,6 +5,7 @@
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
+#include <time.h>
 
 PyObject *ble_error;
 
@@ -53,17 +54,49 @@ failed:
     snprintf(buf, buf_len, "(unknown)");
 }
 
+//TODO duplicated from btmodule.c
+static int
+internal_select(int dd, int writing, double sock_timeout)
+{
+    fd_set fds;
+    struct timeval tv;
+    int n;
+
+    /* Nothing to do unless we're in timeout mode (not non-blocking) */
+    if (sock_timeout <= 0.0)
+        return 0;
+
+    /* Guard against closed socket */
+    if (dd < 0)
+        return 0;
+
+    /* Construct the arguments to select */
+    tv.tv_sec = (int)sock_timeout;
+    tv.tv_usec = (int)((sock_timeout - tv.tv_sec) * 1e6);
+    FD_ZERO(&fds);
+    FD_SET(dd, &fds);
+
+    /* See if the socket is ready */
+    if (writing)
+        n = select(dd+1, NULL, &fds, NULL, &tv);
+    else
+        n = select(dd+1, &fds, NULL, NULL, &tv);
+    if (n == 0)
+        return 1;
+    return 0;
+}
 
 static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
     struct hci_filter nf, of;
     socklen_t olen;
-    int len;
+    int len = 0, timeout;
+    double totime = 9.0, selectto;
+    clock_t start;
 
     olen = sizeof(of);
     if (getsockopt(dd, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
-//        printf("Could not get socket options\n");
         return ble_exception("Could not get socket options");
     }
 
@@ -75,19 +108,27 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
         return ble_exception("Could not set socket options");
     }
 
+    start = clock();
     while (1) {
         evt_le_meta_event *meta;
         le_advertising_info *info;
         char addr[18];
 
-        while ((len = read(dd, buf, sizeof(buf))) < 0) {
+        selectto = totime - ((clock() - start)/100.0);
+        printf("to %f\n", selectto);
+        if(selectto <= 0) {
+            goto done;
+        }
+        Py_BEGIN_ALLOW_THREADS
+        timeout = internal_select(dd, 0, selectto);
+        Py_END_ALLOW_THREADS
+        if (!timeout) {
+            len = read(dd, buf, sizeof(buf));
             if (errno == EINTR && (PyErr_CheckSignals() < 0)) {
                 len = 0;
                 goto done;
             }
-
-            if (errno == EAGAIN || errno == EINTR)
-                continue;
+        } else {
             goto done;
         }
 
@@ -96,21 +137,16 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
 
         meta = (void *) ptr;
 
-        if (meta->subevent != 0x02)
+        if (meta->subevent != 0x02) {
             goto done;
+        }
 
         /* Ignoring multiple reports */
         info = (le_advertising_info *) (meta->data + 1);
 //        if (check_report_filter(filter_type, info)) {
-            char name[30];
-
-            memset(name, 0, sizeof(name));
 
             ba2str(&info->bdaddr, addr);
-            eir_parse_name(info->data, info->length,
-                            name, sizeof(name) - 1);
-
-            printf("%s %s\n", addr, name);
+            printf("%s\n", addr);
 //        }
     }
 
