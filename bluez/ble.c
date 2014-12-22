@@ -94,9 +94,9 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
     int len = 0, timeout, err;
     double totime = 2.0, selectto;
     clock_t start;
-    PyObject *rtn_list = PyList_New(0);
+    PyObject *rtn_set = PySet_New(0);
     //printf("to %d\n", rtn_list);
-    if(rtn_list == NULL) return NULL;
+    if(rtn_set == NULL) return NULL;
 
 
     olen = sizeof(of);
@@ -155,7 +155,7 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
         err = PyTuple_SetItem( item_tuple, 0, addr_entry );
         if (err) {
             Py_XDECREF( item_tuple );
-            Py_XDECREF( rtn_list );
+            Py_XDECREF( rtn_set );
             len = -1;
             goto done;
         }
@@ -163,19 +163,19 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
         err = PyTuple_SetItem( item_tuple, 1, addr_entry );
         if (err) {
             Py_XDECREF( item_tuple );
-            Py_XDECREF( rtn_list );
+            Py_XDECREF( rtn_set );
             len = -1;
             goto done;
         }
-        err = PyList_Append( rtn_list, item_tuple );
+        err = PySet_Add( rtn_set, item_tuple );
         Py_DECREF( item_tuple );
         if (err) {
-            Py_XDECREF( rtn_list );
+            Py_XDECREF( rtn_set );
             len = -1;
             goto done;
         }
 
-        printf("%s\n", addr);
+//        printf("%s\n", addr);
     }
 
 done:
@@ -183,7 +183,7 @@ done:
 
     if (len < 0) return ble_exception("Could not set socket options");
 
-    return rtn_list;
+    return rtn_set;
 }
 
 static PyObject * cmd_lescan(int dev_id, int opt)
