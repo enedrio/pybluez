@@ -2,7 +2,7 @@
 #define __ble_h__
 
 PyObject *
-bt_lescan(PyObject *self, PyObject *args);
+bt_lescan(PyObject *self, PyObject *args, PyObject *kwds);
 PyDoc_STRVAR(bt_lescan_doc,
 "connect_ex(address) -> errno\n\
 \n\

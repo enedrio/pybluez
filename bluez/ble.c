@@ -1,13 +1,12 @@
 #include "Python.h"
 #include "ble.h"
+#include "btmodule.h"
 #include <port3.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 #include <time.h>
-
-PyObject *ble_error;
 
 #define EIR_NAME_SHORT              0x08  /* shortened local name */
 #define EIR_NAME_COMPLETE           0x09  /* complete local name */
@@ -33,14 +32,12 @@ static void eir_parse_name(uint8_t *eir, size_t eir_len,
             break;
 
         if (offset + field_len > eir_len)
-            goto failed;
+            return;
 
-        switch (eir[1]) {
-        case EIR_NAME_SHORT:
-        case EIR_NAME_COMPLETE:
+        if(eir[1] == EIR_NAME_SHORT || eir[1] == EIR_NAME_COMPLETE) {
             name_len = field_len - 1;
             if (name_len > buf_len)
-                goto failed;
+                return;
 
             memcpy(buf, &eir[2], name_len);
             return;
@@ -49,9 +46,6 @@ static void eir_parse_name(uint8_t *eir, size_t eir_len,
         offset += field_len + 1;
         eir += field_len + 1;
     }
-
-failed:
-    snprintf(buf, buf_len, "(unknown)");
 }
 
 //TODO duplicated from btmodule.c
@@ -86,16 +80,15 @@ internal_select(int dd, int writing, double sock_timeout)
     return 0;
 }
 
-static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
+static PyObject * print_advertising_devices(int dd, int duration)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
     struct hci_filter nf, of;
     socklen_t olen;
     int len = 0, timeout, err;
-    double totime = 2.0, selectto;
+    double totime = duration, selectto;
     clock_t start;
     PyObject *rtn_set = PySet_New(0);
-    //printf("to %d\n", rtn_list);
     if(rtn_set == NULL) return NULL;
 
 
@@ -119,6 +112,7 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
         char addr[18];
 
         selectto = totime - ((clock() - start)/100.0);
+
         if(selectto <= 0) {
             goto done;
         }
@@ -159,7 +153,12 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
             len = -1;
             goto done;
         }
-        addr_entry = PyString_FromString( addr );
+        char name[30];
+        memset(name, 0, sizeof(name));
+        eir_parse_name(info->data, info->length,
+                        name, sizeof(name) - 1);
+
+        addr_entry = PyString_FromString( name );
         err = PyTuple_SetItem( item_tuple, 1, addr_entry );
         if (err) {
             Py_XDECREF( item_tuple );
@@ -174,8 +173,6 @@ static PyObject * print_advertising_devices(int dd, uint8_t filter_type)
             len = -1;
             goto done;
         }
-
-//        printf("%s\n", addr);
     }
 
 done:
@@ -186,47 +183,16 @@ done:
     return rtn_set;
 }
 
-static PyObject * cmd_lescan(int dev_id, int opt)
+static PyObject * cmd_lescan(int sock_fd, int duration)
 {
-    int err, dd;
+    int err, dd = sock_fd;
     uint8_t own_type = 0x00;
     uint8_t scan_type = 0x01;
-    uint8_t filter_type = 'l';
     uint8_t filter_policy = 0x00;
-    uint16_t interval = htobs(0x0010);
-    uint16_t window = htobs(0x0010);
+    uint16_t interval = htobs(0x0012);
+    uint16_t window = htobs(0x0012);
     uint8_t filter_dup = 1;
     PyObject * ret = NULL;
-
-    switch (opt) {
-    case 'p':
-        own_type = 0x01; /* Random */
-        break;
-    case 'P':
-        scan_type = 0x00; /* Passive */
-        break;
-    case 'w':
-        filter_policy = 0x01; /* Whitelist */
-        break;
-    case 'd':
-        interval = htobs(0x0012);
-        window = htobs(0x0012);
-        break;
-    case 'D':
-        filter_dup = 0x00;
-        break;
-    default:
-        printf("error");
-        return NULL;
-    }
-
-    if (dev_id < 0)
-        dev_id = hci_get_route(NULL);
-
-    dd = hci_open_dev(dev_id);
-    if (dd < 0) {
-        return ble_exception("Could not open device");
-    }
 
     err = hci_le_set_scan_parameters(dd, scan_type, interval, window,
                         own_type, filter_policy, 10000);
@@ -239,7 +205,7 @@ static PyObject * cmd_lescan(int dev_id, int opt)
         return ble_exception("Enable scan failed");
     }
 
-    ret = print_advertising_devices(dd, filter_type);
+    ret = print_advertising_devices(dd, duration);
 
     if (ret == NULL) {
         return ble_exception("Could not receive advertising events");
@@ -250,13 +216,21 @@ static PyObject * cmd_lescan(int dev_id, int opt)
         return ble_exception("Disable scan failed");
     }
 
-    hci_close_dev(dd);
     return ret;
 }
 
 PyObject *
-bt_lescan(PyObject *self, PyObject *args) {
-    return cmd_lescan(-1, 'd');
+bt_lescan(PyObject *self, PyObject *args, PyObject *kwds) {
+    PySocketSockObject *socko = NULL;
+    int duration = 8;
+    static char *keywords[] = {"sock", "duration", 0};
+
+    if( !PyArg_ParseTupleAndKeywords(args, kwds, "O|i", keywords,
+                &socko, &duration) ) {
+        return NULL;
+    }
+
+    return cmd_lescan(socko->sock_fd, duration);
 
 }
 

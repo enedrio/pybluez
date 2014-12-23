@@ -19,8 +19,31 @@ del _constants
 
 # ============== SDP service registration and unregistration ============
 
-def lescan():
-    return _bt.lescan()
+class BleDevice(object):
+
+    def __init__(self, addr, name=""):
+        self._addr = addr
+        self._name = name
+
+    def __str__(self):
+        return "{ADDR} : {NAME}".format(ADDR=self._addr, NAME=self._name)
+
+
+def discover_ble_devices (duration=8, lookup_names=True):
+    sock = _gethcisock ()
+    scan_res = _bt.lescan(sock, duration=duration)
+
+    devices = dict()
+    for (addr, name) in scan_res:
+        if addr not in devices or name:
+            devices[addr] = name
+    ret = list()
+    for key in devices:
+        ret.append(BleDevice(key, devices[key]))
+
+    sock.close()
+    return ret
+
 
 def discover_devices (duration=8, flush_cache=True, lookup_names=False, lookup_class=False):
     sock = _gethcisock ()
@@ -447,8 +470,6 @@ class DeviceDiscoverer:
         self._process_hci_event ()
 
     def _process_hci_event (self):
-        import socket
-
         if self.sock is None: return
         # voodoo magic!!!
         pkt = self.sock.recv (258)
