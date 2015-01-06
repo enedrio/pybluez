@@ -2743,11 +2743,18 @@ bt_sdp_stop_advertising( PyObject *self, PyObject *args )
     Py_INCREF(Py_None);
     return Py_None;
 }
+
 PyDoc_STRVAR( bt_sdp_stop_advertising_doc,
 "sdp_stop_advertising( socket )\n\
 \n\
 stop advertising services associated with this socket\n\
 ");
+
+PyDoc_STRVAR(bt_lescan_doc,
+"connect_ex(address) -> errno\n\
+\n\
+This is like connect(address), but returns an error code (the errno value)\n\
+instead of raising an exception when an error occurs.");
 
 
 /* List of functions exported by this module. */
@@ -2856,7 +2863,7 @@ PyInit__bluetooth(void)
     static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
         "_bluetooth",
-        NULL,
+        socket_doc,
         -1,
         bt_methods,
         NULL,
